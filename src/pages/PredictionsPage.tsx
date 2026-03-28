@@ -46,9 +46,8 @@ function MatchCard({ match, onPredict }: {
 
       {/* Teams & Score Input / Result Grid */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: isOpen ? 12 : 0 }}>
-        {/* Home */}
         <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-          <img src={match.home_team ? flagUrl(match.home_team.country_code) : ''} alt={match.home_team?.name} className="flag-md" />
+          <img src={match.home_team ? (match.home_team.flag_url || flagUrl(match.home_team.country_code)) : ''} alt={match.home_team?.name} className="flag-md" />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{match.home_team?.name}</span>
         </div>
 
@@ -91,9 +90,8 @@ function MatchCard({ match, onPredict }: {
           </div>
         </div>
 
-        {/* Away */}
         <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-          <img src={match.away_team ? flagUrl(match.away_team.country_code) : ''} alt={match.away_team?.name} className="flag-md" />
+          <img src={match.away_team ? (match.away_team.flag_url || flagUrl(match.away_team.country_code)) : ''} alt={match.away_team?.name} className="flag-md" />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{match.away_team?.name}</span>
         </div>
       </div>

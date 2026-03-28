@@ -46,7 +46,7 @@ function TeamSlot({ pick, allTeams, onSelect, disabled }: {
           position: 'relative',
         }}
       >
-        <img src={flagUrl(pick.team.country_code, 'sm')} alt={pick.team.name} className="flag-sm" />
+        <img src={pick.team.flag_url || flagUrl(pick.team.country_code, 'sm')} alt={pick.team.name} className="flag-sm" />
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>{pick.team.name}</span>
         {open && !disabled && (
           <div style={{
@@ -68,7 +68,7 @@ function TeamSlot({ pick, allTeams, onSelect, disabled }: {
                 onClick={() => { onSelect(t.id); setOpen(false) }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-primary)', fontSize: 13 }}
               >
-                <img src={flagUrl(t.country_code, 'sm')} alt={t.name} className="flag-sm" />
+                <img src={t.flag_url || flagUrl(t.country_code, 'sm')} alt={t.name} className="flag-sm" />
                 {t.name}
               </button>
             ))}
@@ -117,7 +117,7 @@ function TeamSlot({ pick, allTeams, onSelect, disabled }: {
               onClick={() => { onSelect(t.id); setOpen(false) }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-primary)', fontSize: 13 }}
             >
-              <img src={flagUrl(t.country_code, 'sm')} alt={t.name} className="flag-sm" />
+              <img src={t.flag_url || flagUrl(t.country_code, 'sm')} alt={t.name} className="flag-sm" />
               {t.name}
             </button>
           ))}

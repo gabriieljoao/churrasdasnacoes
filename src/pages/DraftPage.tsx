@@ -95,7 +95,7 @@ function CraqueCard({ player, isSelected, onSelect, disabled, canAfford }: {
       }}
     >
       {player.team && (
-        <img src={flagUrl(player.team.country_code, 'sm')} alt={player.team.name} className="flag-sm" />
+        <img src={player.team.flag_url || flagUrl(player.team.country_code, 'sm')} alt={player.team.name} className="flag-sm" />
       )}
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)' }}>
@@ -351,7 +351,7 @@ export default function DraftPage() {
                 padding: '16px 8px',
                 textAlign: 'center'
               }}>
-                <img src={flagUrl(team.country_code, 'md')} alt={team.name} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-surface)' }} />
+                <img src={team.flag_url || flagUrl(team.country_code, 'md')} alt={team.name} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-surface)' }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.1 }}>{team.name}</span>
               </div>
             )
