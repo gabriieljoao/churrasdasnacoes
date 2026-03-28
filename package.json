@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "seed-br": "tsx scripts/seed-brasileirao.ts",
     "sync-br": "tsx scripts/sync-brasileirao.ts",
-    "calc-scores": "tsx scripts/calc-scores.ts"
+    "calc-scores": "tsx scripts/calc-scores.ts",
+    "wipe-db": "tsx scripts/wipe-db.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

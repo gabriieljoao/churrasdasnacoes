@@ -1,0 +1,46 @@
+name: Sincronização do Brasileirão (Sync Matches & Calc Scores)
+
+on:
+  # Roda manualmente quando você clica em "Run workflow" no GitHub
+  workflow_dispatch:
+  
+  # Roda automaticamente a cada 10 minutos
+  schedule:
+    - cron: '*/10 * * * *'
+
+jobs:
+  run-sync-and-calc:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Baixa o código fonte
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Prepara o Node.js v20
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      # 3. Instala as dependências necessárias para rodar os scripts
+      - name: Install dependencies
+        run: npm i -g tsx dotenv
+        
+      - name: Install supabase client
+        run: npm i @supabase/supabase-js
+
+      # 4. Roda o script de Sincronização (Busca novos resultados da API)
+      - name: Sync Matches from API
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+        run: npx tsx scripts/sync-brasileirao.ts
+
+      # 5. Roda o script de Cálculo (Distribui os pontos e atualiza ranking)
+      - name: Calculate Scores
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/calc-scores.ts
