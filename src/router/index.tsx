@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { AppShell } from '@/components/layout/AppShell'
 import LoginPage from '@/pages/LoginPage'
@@ -27,7 +27,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 export function AppRouter() {
   return (
-    <BrowserRouter basename="/churrasdasnacoes">
+    <HashRouter>
       <Routes>
         {/* Public */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -47,6 +47,6 @@ export function AppRouter() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
