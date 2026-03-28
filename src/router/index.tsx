@@ -27,7 +27,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 export function AppRouter() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/churrasdasnacoes">
       <Routes>
         {/* Public */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />

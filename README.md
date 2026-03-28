@@ -43,4 +43,3 @@ Os workflows automáticos estão localizados em `.github/workflows/`:
 3. Inicie o servidor: `npm run dev`
 
 ---
-*Projeto desenvolvido como parte da iniciativa ChurrAsco das Nações.*
