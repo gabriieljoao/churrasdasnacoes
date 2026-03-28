@@ -25,7 +25,7 @@ async function fetchAPI(endpoint: string) {
 async function seed() {
   console.log('🌱 Buscando times do Brasileirão Série A na API...')
   
-  const competition = await fetchAPI('/competitions/BSA/teams')
+  const competition = await fetchAPI('/competitions/BSA/teams?season=2026')
   const apiTeams = competition.teams
 
   console.log('🚮 Removendo dados antigos...')
@@ -68,23 +68,38 @@ async function seed() {
   if (teamsError) throw teamsError
   console.log(`✅ ${insertedTeams.length} times inseridos`)
 
-  // Players
-  console.log('🏃‍♂️ Inserindo Jogadores Gênéricos (Economia Base)...')
+  console.log('🏃‍♂️ Inserindo Jogadores Oficiais (SQUADS)...')
   const PLAYERS: any[] = []
-  insertedTeams.forEach((team: any) => {
-    PLAYERS.push({ name: `Atacante do ${team.name}`, team_id: team.id, position: 'Atacante', price: 10 })
-    PLAYERS.push({ name: `Meia do ${team.name}`, team_id: team.id, position: 'Meio-campo', price: 10 })
-    PLAYERS.push({ name: `Zagueiro do ${team.name}`, team_id: team.id, position: 'Zagueiro', price: 10 })
-  })
-
-  await supabase.from('players').insert(PLAYERS)
   
   // API uses its own IDs for homeTeam/awayTeam. We need to map Name -> Supabase ID.
   const nameToDbId = new Map(insertedTeams.map((t: any) => [t.name, t.id]))
 
-  console.log('📅 Buscando Partidas da Rodada 1...')
-  // Try fetching current matchday matches, or matchday=1
-  const matchesData = await fetchAPI('/competitions/BSA/matches?matchday=1')
+  for (const apiTeam of apiTeams) {
+    const dbTeamId = nameToDbId.get(apiTeam.shortName || apiTeam.name)
+    if (!dbTeamId || !apiTeam.squad) continue
+
+    for (const player of apiTeam.squad) {
+      if (player.position === 'Goalkeeper') continue // We don't use Goleiros unless needed, but let's include all to be safe just in case! Actually let's just add all.
+      
+      let ptPosition = 'Meio-campo'
+      if (player.position === 'Offence') ptPosition = 'Atacante'
+      else if (player.position === 'Defence') ptPosition = 'Zagueiro'
+      else if (player.position === 'Goalkeeper') ptPosition = 'Goleiro'
+
+      PLAYERS.push({ 
+        name: player.name, 
+        team_id: dbTeamId, 
+        position: ptPosition, 
+        price: 10 // Starting generic economy price
+      })
+    }
+  }
+
+  await supabase.from('players').insert(PLAYERS)
+  console.log(`✅ ${PLAYERS.length} jogadores inseridos!`)
+  
+  console.log('📅 Buscando TODAS as Partidas da Temporada 2026...')
+  const matchesData = await fetchAPI('/competitions/BSA/matches?season=2026')
   const apiMatches = matchesData.matches
 
   const matches = apiMatches.map((m: any) => {

@@ -154,10 +154,37 @@ export default function PredictionsPage() {
   const [matches, setMatches] = useState<MatchWithPrediction[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'upcoming' | 'live' | 'finished'>('upcoming')
+  const [selectedRound, setSelectedRound] = useState<number>(1)
 
   useEffect(() => {
+    // 1. Load from cache first
+    const cached = localStorage.getItem('churrasco_preds_cache')
+    if (cached) {
+      try {
+        const { data, timestamp, round } = JSON.parse(cached)
+        // Only use cache if it's less than 5 minutes old
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          setMatches(data)
+          setSelectedRound(round ?? 1)
+          setLoading(false)
+        }
+      } catch (e) {
+        console.error('Cache error', e)
+      }
+    }
+    
     fetchMatches()
   }, [])
+
+  // Auto-set the current round based on matches logic (first non-finished round)
+  useEffect(() => {
+    if (matches.length > 0 && !localStorage.getItem('churrasco_preds_cache')) {
+      const firstUpcoming = matches.find(m => m.status === 'SCHEDULED' || m.status === 'LIVE')
+      if (firstUpcoming?.round_number) {
+        setSelectedRound(firstUpcoming.round_number)
+      }
+    }
+  }, [matches])
 
   const fetchMatches = async () => {
     setLoading(true)
@@ -186,6 +213,13 @@ export default function PredictionsPage() {
 
     setMatches(enriched)
     setLoading(false)
+
+    // Save to cache
+    localStorage.setItem('churrasco_preds_cache', JSON.stringify({
+      data: enriched,
+      timestamp: Date.now(),
+      round: selectedRound
+    }))
   }
 
   const predict = async (matchId: number, home: number, away: number) => {
@@ -203,15 +237,76 @@ export default function PredictionsPage() {
   }
 
   const filtered = matches.filter((m) => {
+    // Round filter
+    if (m.round_number !== selectedRound) return false
+    
+    // Status filter
     if (filter === 'upcoming') return m.status === 'SCHEDULED'
     if (filter === 'live') return m.status === 'LIVE'
     return m.status === 'FINISHED'
   })
 
+  // Unique rounds available in the DB
+  const rounds = Array.from(new Set(matches.map(m => m.round_number).filter(Boolean))).sort((a, b) => a! - b!) as number[]
+
   return (
-    <div className="page">
+    <div className="page" style={{ paddingBottom: 80 }}>
+      {/* Round Selector (Horizontal Scroll) */}
+      <div style={{ marginBottom: 16 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginLeft: 4, display: 'block', marginBottom: 8 }}>
+          Rodada
+        </span>
+        <div style={{ 
+          display: 'flex', 
+          gap: 8, 
+          overflowX: 'auto', 
+          padding: '4px 4px 12px',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}>
+          {rounds.length > 0 ? rounds.map((r) => (
+            <button
+              key={r}
+              onClick={() => {
+                setSelectedRound(r)
+                // Update cache preference
+                const cached = localStorage.getItem('churrasco_preds_cache')
+                if (cached) {
+                  const parsed = JSON.parse(cached)
+                  parsed.round = r
+                  localStorage.setItem('churrasco_preds_cache', JSON.stringify(parsed))
+                }
+              }}
+              style={{
+                minWidth: 44,
+                height: 44,
+                borderRadius: '50%',
+                border: '1px solid ' + (selectedRound === r ? 'var(--color-primary)' : 'var(--color-border)'),
+                background: selectedRound === r ? 'var(--color-primary-low)' : 'var(--color-surface)',
+                color: selectedRound === r ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                fontWeight: 700,
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                cursor: 'pointer',
+                boxShadow: selectedRound === r ? '0 0 15px rgba(0, 96, 57, 0.2)' : 'none',
+                transition: 'all 0.2s'
+              }}
+            >
+              {r}
+            </button>
+          )) : (
+            Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ minWidth: 44, height: 44, borderRadius: '50%', flexShrink: 0 }} />
+            ))
+          )}
+        </div>
+      </div>
+
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: 4 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: 4, border: '1px solid var(--color-border)' }}>
         {(['upcoming', 'live', 'finished'] as const).map((f) => (
           <button
             key={f}
@@ -234,11 +329,12 @@ export default function PredictionsPage() {
         ))}
       </div>
 
-      {loading
+      {loading && matches.length === 0
         ? Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton" style={{ height: 180, borderRadius: 'var(--radius-lg)', marginBottom: 10 }} />)
         : filtered.length === 0
-          ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-muted)', fontSize: 14 }}>
-              Nenhum jogo aqui ainda.
+          ? <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--color-text-muted)', fontSize: 14 }}>
+              <Clock size={32} style={{ marginBottom: 12, opacity: 0.5 }} />
+              <div>Nenhuma partida de <strong>Rodada {selectedRound}</strong> com status <strong>{filter === 'upcoming' ? 'Próximos' : filter === 'live' ? 'Ao Vivo' : 'Encerrados'}</strong>.</div>
             </div>
           : filtered.map((match) => (
               <MatchCard key={match.id} match={match} onPredict={predict} />

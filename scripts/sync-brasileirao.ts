@@ -25,59 +25,76 @@ async function fetchAPI(endpoint: string) {
 async function sync() {
   console.log('🔄 Sincronizando partidas do Brasileirão Série A...')
 
-  // Get matches currently SCHEDULED in our DB
+  // 1. Get matches that are NOT finished in our DB to compare
   const { data: ourMatches } = await supabase
     .from('matches')
-    .select('id, home_team_id, away_team_id')
-    .eq('status', 'SCHEDULED')
+    .select('id, home_team_id, away_team_id, home_score_ft, away_score_ft, status')
+    .neq('status', 'FINISHED')
     
   if (!ourMatches || ourMatches.length === 0) {
-    console.log('Nenhuma partida aguardando resultado.')
+    console.log('✅ Nenhuma partida em aberto no banco para sincronizar.')
     return
   }
 
-  // To map home/away to our DB, we need the teams
+  // 2. Map teams to IDs for comparison
   const { data: teams } = await supabase.from('teams').select('id, name')
   const nameToDbId = new Map(teams?.map(t => [t.name, t.id]))
 
-  // Fetch only finished matches from the API
-  const matchesData = await fetchAPI('/competitions/BSA/matches?status=FINISHED')
-  const finishedApiMatches = matchesData.matches
+  // 3. Fetch current status of ALL matches (or just target the season)
+  // We use the broad /matches endpoint to get live + finished in one go
+  const matchesData = await fetchAPI('/competitions/BSA/matches?season=2026')
+  const apiMatches = matchesData.matches.filter((m: any) => 
+    m.status === 'FINISHED' || m.status === 'IN_PLAY' || m.status === 'PAUSED' || m.status === 'LIVE'
+  )
 
   let updatedCount = 0
 
-  for (const apiMatch of finishedApiMatches) {
+  for (const apiMatch of apiMatches) {
     const homeName = apiMatch.homeTeam.shortName || apiMatch.homeTeam.name
     const awayName = apiMatch.awayTeam.shortName || apiMatch.awayTeam.name
     
     const dbHomeId = nameToDbId.get(homeName)
     const dbAwayId = nameToDbId.get(awayName)
 
-    // Check if we have this match as SCHEDULED
-    const matchToUpdate = ourMatches.find(m => m.home_team_id === dbHomeId && m.away_team_id === dbAwayId)
+    if (!dbHomeId || !dbAwayId) continue
 
-    if (matchToUpdate) {
-      console.log(`Atualizando resultado: ${homeName} ${apiMatch.score.fullTime.home} x ${apiMatch.score.fullTime.away} ${awayName}`)
+    // Find if we have this specific match record active
+    const matchInDb = ourMatches.find(m => m.home_team_id === dbHomeId && m.away_team_id === dbAwayId)
+
+    if (matchInDb) {
+      const apiHome = apiMatch.score.fullTime.home
+      const apiAway = apiMatch.score.fullTime.away
+      // API status mapping
+      const apiStatus = (apiMatch.status === 'FINISHED') ? 'FINISHED' : 'LIVE'
       
-      const { error } = await supabase
-        .from('matches')
-        .update({
-          home_score_ft: apiMatch.score.fullTime.home,
-          away_score_ft: apiMatch.score.fullTime.away,
-          status: 'FINISHED'
-          // Events like GOAL, RED_CARD are not available in the free tier of football-data for matches natively.
-          // For the free tier, we will skip player economy variations from events.
-        })
-        .eq('id', matchToUpdate.id)
+      // COMPARISON: Only write to Supabase if data actually changed
+      const hasChanged = 
+        matchInDb.home_score_ft !== apiHome || 
+        matchInDb.away_score_ft !== apiAway || 
+        matchInDb.status !== apiStatus
 
-      if (error) console.error('Erro ao atualizar:', error)
-      else updatedCount++
+      if (hasChanged) {
+        console.log(`[ATUALIZANDO] ${homeName} ${matchInDb.home_score_ft ?? 0}x${matchInDb.away_score_ft ?? 0} -> ${apiHome}x${apiAway} (${apiStatus})`)
+        
+        const { error } = await supabase
+          .from('matches')
+          .update({
+            home_score_ft: apiHome,
+            away_score_ft: apiAway,
+            status: apiStatus
+          })
+          .eq('id', matchInDb.id)
+
+        if (error) console.error(`❌ Erro em ${homeName} vs ${awayName}:`, error)
+        else updatedCount++
+      }
     }
   }
 
-  console.log(`✅ Sincronização concluída. ${updatedCount} partidas finalizadas!`)
+  console.log(`🏁 Sincronização concluída. ${updatedCount} mudanças detectadas.`)
   if (updatedCount > 0) {
-    console.log('👉 Agora rode: npx tsx scripts/calc-scores.ts para distribuir os pontos.')
+    console.log('👉 Rodando cálculo de pontuação automático...')
+    // Note: In GitHub Actions, we run calc-scores.ts in the next step anyway.
   }
 }
 
