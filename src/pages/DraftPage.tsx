@@ -143,6 +143,8 @@ export default function DraftPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [tab, setTab] = useState<'teams' | 'craque'>('teams')
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
+  const [playerTeamFilter, setPlayerTeamFilter] = useState<number | 'all'>('all')
+  const [missingPicksAlert, setMissingPicksAlert] = useState(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -178,38 +180,40 @@ export default function DraftPage() {
       const config = configRes.data
       if (config) setDraftOpen(config.draft_open ?? true)
 
-      // Get current round
-      const { data: matches } = await supabase
+      // Get current round (Smart Detection)
+      const { data: allMatches } = await supabase
         .from('matches')
         .select('*')
         .order('starts_at')
-        .limit(1)
       
-      let roundInfo = null
-      if (matches && matches[0]) {
-        const { data: roundMatches } = await supabase
-          .from('matches')
-          .select('*')
-          .eq('round_number', matches[0].round_number)
-          .order('starts_at')
-          .limit(1)
-        if (roundMatches) {
-          roundInfo = { number: matches[0].round_number ?? 1, firstMatch: roundMatches[0] }
-          setCurrentRound(roundInfo)
-        }
-      }
+      if (allMatches && allMatches.length > 0) {
+        const now = Date.now()
+        const fourHoursAgo = now - 4 * 60 * 60 * 1000
+        
+        const activeMatch = allMatches.find(m => 
+          m.status === 'LIVE' || 
+          (m.status === 'SCHEDULED' && new Date(m.starts_at).getTime() > fourHoursAgo)
+        )
 
-      // Get craques for current round
-      if (roundInfo) {
+        const roundNum = activeMatch?.round_number ?? 1
+        
+        const roundMatches = allMatches.filter(m => m.round_number === roundNum)
+        const roundInfo = { number: roundNum, firstMatch: roundMatches[0] }
+        setCurrentRound(roundInfo)
+
+        // Get craques for current round
         const { data: craques } = await supabase
           .from('round_craques')
           .select('*, players(*, teams(*))')
-          .eq('round_number', roundInfo.number)
-          
+          .eq('round_number', roundNum)
+            
         if (craques) {
           const my = craques.find((c: any) => c.user_id === user?.id)
           setDbCraqueId(my ? my.player_id : null)
-          setLocalCraqueId(my ? my.player_id : null) // sync local
+          setLocalCraqueId(my ? my.player_id : null)
+          if (!my) setMissingPicksAlert(true)
+        } else {
+          setMissingPicksAlert(true)
         }
       }
     } finally {
@@ -221,6 +225,17 @@ export default function DraftPage() {
 
   const toggleLocalTeam = (teamId: number) => {
     if (!draftOpen) return
+    
+    // If I already have my full draft (3 teams), clicking a team acts as a filter shortcut to the Craque tab
+    // BUT only for the teams in the list, not the ones already picked (which remain static/toggleable)
+    if (localTeamIds.size === DRAFT_MAX_TEAMS && !localTeamIds.has(teamId)) {
+      setTab('craque')
+      setPlayerTeamFilter(teamId)
+      // Scroll to top to see the dropdown
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     const next = new Set(localTeamIds)
     if (next.has(teamId)) {
       next.delete(teamId)
@@ -315,7 +330,17 @@ export default function DraftPage() {
 
   return (
     <div className="page" style={{ paddingBottom: 100 }}>
-      {/* Draft status banner */}
+      {/* Missing Picks Alert */}
+      {missingPicksAlert && !craqueDeadlinePassed && (
+        <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 'var(--radius-lg)', padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Zap size={16} style={{ color: 'var(--color-gold)', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-gold)' }}>Craque pendente!</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Você ainda não escolheu seu craque para a Rodada {currentRound?.number}.</div>
+          </div>
+        </div>
+      )}
+
       {!draftOpen && (
         <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-lg)', padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Lock size={16} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
@@ -513,23 +538,53 @@ export default function DraftPage() {
             )}
           </div>
 
-          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 12 }}>
-            Escolha 1 jogador. O custo dele cai dos seus pontos no Ranking! Se cancelar a seleção, você recebe os pontos de volta.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Escolha 1 jogador. O custo dele cai dos seus pontos no Ranking! Se cancelar a seleção, você recebe os pontos de volta.
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginLeft: 4 }}>
+                Filtrar por Time
+              </label>
+              <select 
+                value={playerTeamFilter} 
+                onChange={(e) => setPlayerTeamFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-primary)',
+                  fontSize: 14,
+                  outline: 'none'
+                }}
+              >
+                <option value="all">Todos os times</option>
+                {teams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {loading
               ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton" style={{ height: 48, borderRadius: 'var(--radius-md)' }} />)
-              : players.map((player) => (
-                <CraqueCard
-                  key={player.id}
-                  player={player}
-                  isSelected={localCraqueId === player.id}
-                  onSelect={() => toggleLocalCraque(player.id)}
-                  disabled={craqueDeadlinePassed || saving}
-                  canAfford={effectiveBalance >= player.price!}
-                />
-              ))}
+              : players
+                  .filter(p => playerTeamFilter === 'all' || p.team_id === playerTeamFilter)
+                  .map((player) => (
+                    <CraqueCard
+                      key={player.id}
+                      player={player}
+                      isSelected={localCraqueId === player.id}
+                      onSelect={() => toggleLocalCraque(player.id)}
+                      disabled={craqueDeadlinePassed || saving}
+                      canAfford={effectiveBalance >= player.price!}
+                    />
+                  ))
+            }
           </div>
 
           {hasCraqueChanges && (

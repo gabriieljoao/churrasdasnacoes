@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/authStore'
 import { canPredict, formatMatchDate, formatTimeLeft, flagUrl } from '@/lib/utils'
 import type { Match, Prediction } from '@/types'
-import { Clock, Lock, CheckCircle2, Loader2 } from 'lucide-react'
+import { Clock, Lock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Flame } from 'lucide-react'
 
 type MatchWithPrediction = Match & { myPrediction?: Prediction; allPredictions?: Prediction[] }
 
@@ -55,7 +55,7 @@ function MatchCard({ match, onPredict }: {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           {match.status === 'FINISHED' || match.status === 'LIVE' ? (
             <div className="font-display" style={{ fontSize: 28, color: 'var(--color-text-primary)' }}>
-              {match.home_score ?? 0} <span style={{ color: 'var(--color-text-muted)', margin: '0 4px', fontSize: 20 }}>—</span> {match.away_score ?? 0}
+              {match.home_score_ft ?? 0} <span style={{ color: 'var(--color-text-muted)', margin: '0 4px', fontSize: 20 }}>—</span> {match.away_score_ft ?? 0}
             </div>
           ) : isOpen ? (
             <div className="score-input-pair" style={{ gap: 6 }}>
@@ -85,8 +85,8 @@ function MatchCard({ match, onPredict }: {
             </div>
           )}
           
-          <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, textTransform: 'uppercase' }}>
-            {formatMatchDate(match.starts_at).split(' às ')[0]}
+          <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2, textTransform: 'uppercase', fontWeight: 600 }}>
+            {formatMatchDate(match.starts_at)}
           </div>
         </div>
 
@@ -115,24 +115,28 @@ function MatchCard({ match, onPredict }: {
         </button>
       )}
 
-      {/* Finished Match Extra Details */}
-      {match.status === 'FINISHED' && (
+      {/* Prediction Details Section (Visible if closed or finished) */}
+      {!isOpen && (
         <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12, marginTop: 12 }}>
           {match.myPrediction ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
                 Seu palpite: <strong style={{ color: 'var(--color-text-primary)' }}>{match.myPrediction.predicted_home}–{match.myPrediction.predicted_away}</strong>
               </span>
-              {match.myPrediction.points_earned != null && (
+              {match.myPrediction.points_earned !== undefined && match.myPrediction.points_earned !== null && (
                 <span className={`badge ${match.myPrediction.points_earned > 0 ? 'badge-success' : 'badge-muted'}`}>
                   {match.myPrediction.points_earned > 0 ? `+${match.myPrediction.points_earned} pts` : '0 pts'}
                 </span>
               )}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Sem palpite registrado</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+              {match.status === 'FINISHED' ? 'Você não enviou palpite para este jogo.' : 'Você ainda não registrou seu palpite.'}
+            </div>
           )}
-          {match.allPredictions && match.allPredictions.length > 1 && (
+          
+          {/* Other players' predictions if match is over/live */}
+          {(match.status === 'FINISHED' || match.status === 'LIVE') && match.allPredictions && match.allPredictions.length > 1 && (
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {match.allPredictions.map((p) => (
                 <div key={p.id} style={{ fontSize: 11, color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderRadius: 4, padding: '2px 6px' }}>
@@ -155,6 +159,7 @@ export default function PredictionsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'upcoming' | 'live' | 'finished'>('upcoming')
   const [selectedRound, setSelectedRound] = useState<number>(1)
+  const [missingPredsAlert, setMissingPredsAlert] = useState(false)
 
   useEffect(() => {
     // 1. Load from cache first
@@ -176,15 +181,49 @@ export default function PredictionsPage() {
     fetchMatches()
   }, [])
 
-  // Auto-set the current round based on matches logic (first non-finished round)
+  // Auto-set the current round based on filter and matches
   useEffect(() => {
-    if (matches.length > 0 && !localStorage.getItem('churrasco_preds_cache')) {
-      const firstUpcoming = matches.find(m => m.status === 'SCHEDULED' || m.status === 'LIVE')
-      if (firstUpcoming?.round_number) {
-        setSelectedRound(firstUpcoming.round_number)
+    if (matches.length === 0) return
+
+    if (filter === 'upcoming' || filter === 'live') {
+      // SMART ROUND: Find the match that is LIVE or starts soonest (ignoring old stuck matches)
+      const now = Date.now()
+      const fourHoursAgo = now - 4 * 60 * 60 * 1000
+      
+      const activeMatch = matches.find(m => 
+        m.status === 'LIVE' || 
+        (m.status === 'SCHEDULED' && new Date(m.starts_at).getTime() > fourHoursAgo)
+      )
+
+      if (activeMatch?.round_number) {
+        setSelectedRound(activeMatch.round_number)
+      }
+    } else if (filter === 'finished') {
+      // Find LAST round that has finished matches
+      // To be "100% finished", we can group by round and check
+      const roundGroups = matches.reduce((acc: any, m) => {
+        if (!m.round_number) return acc
+        if (!acc[m.round_number]) acc[m.round_number] = []
+        acc[m.round_number].push(m)
+        return acc
+      }, {})
+
+      const finishedRounds = Object.keys(roundGroups)
+        .filter(r => roundGroups[r].every((m: any) => m.status === 'FINISHED'))
+        .map(Number)
+        .sort((a, b) => b - a)
+
+      if (finishedRounds.length > 0) {
+        setSelectedRound(finishedRounds[0])
+      } else {
+        // Fallback to highest round with any finished match
+        const anyFinished = [...matches]
+          .reverse()
+          .find(m => m.status === 'FINISHED')
+        if (anyFinished?.round_number) setSelectedRound(anyFinished.round_number)
       }
     }
-  }, [matches])
+  }, [matches, filter])
 
   const fetchMatches = async () => {
     setLoading(true)
@@ -213,6 +252,16 @@ export default function PredictionsPage() {
 
     setMatches(enriched)
     setLoading(false)
+
+    // Check for missing predictions in next 24h
+    const now = Date.now()
+    const tomorrow = now + 24 * 60 * 60 * 1000
+    const pending = enriched.some(m => 
+      m.status === 'SCHEDULED' && 
+      new Date(m.starts_at).getTime() < tomorrow && 
+      !m.myPrediction
+    )
+    setMissingPredsAlert(pending)
 
     // Save to cache
     localStorage.setItem('churrasco_preds_cache', JSON.stringify({
@@ -247,61 +296,66 @@ export default function PredictionsPage() {
   })
 
   // Unique rounds available in the DB
-  const rounds = Array.from(new Set(matches.map(m => m.round_number).filter(Boolean))).sort((a, b) => a! - b!) as number[]
+
 
   return (
     <div className="page" style={{ paddingBottom: 80 }}>
-      {/* Round Selector (Horizontal Scroll) */}
-      <div style={{ marginBottom: 16 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginLeft: 4, display: 'block', marginBottom: 8 }}>
-          Rodada
+      {/* Missing Predictions Alert */}
+      {missingPredsAlert && (
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-lg)', padding: '12px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Flame size={16} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-error)' }}>Palpites pendentes!</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Você tem jogos nas próximas 24h que ainda não foram palpitados. Não perca pontos!</div>
+          </div>
+        </div>
+      )}
+
+      {/* Round Selector (Arrows) */}
+      <div style={{ marginBottom: 20 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', textAlign: 'center', display: 'block', marginBottom: 12, letterSpacing: '0.1em' }}>
+          Rodada do Brasileirão
         </span>
         <div style={{ 
           display: 'flex', 
-          gap: 8, 
-          overflowX: 'auto', 
-          padding: '4px 4px 12px',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none'
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: 16,
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-xl)',
+          padding: '10px 16px',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--glass-shadow)'
         }}>
-          {rounds.length > 0 ? rounds.map((r) => (
-            <button
-              key={r}
-              onClick={() => {
-                setSelectedRound(r)
-                // Update cache preference
-                const cached = localStorage.getItem('churrasco_preds_cache')
-                if (cached) {
-                  const parsed = JSON.parse(cached)
-                  parsed.round = r
-                  localStorage.setItem('churrasco_preds_cache', JSON.stringify(parsed))
-                }
-              }}
-              style={{
-                minWidth: 44,
-                height: 44,
-                borderRadius: '50%',
-                border: '1px solid ' + (selectedRound === r ? 'var(--color-primary)' : 'var(--color-border)'),
-                background: selectedRound === r ? 'var(--color-primary-low)' : 'var(--color-surface)',
-                color: selectedRound === r ? 'var(--color-primary)' : 'var(--color-text-primary)',
-                fontWeight: 700,
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                cursor: 'pointer',
-                boxShadow: selectedRound === r ? '0 0 15px rgba(0, 96, 57, 0.2)' : 'none',
-                transition: 'all 0.2s'
-              }}
-            >
-              {r}
-            </button>
-          )) : (
-            Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ minWidth: 44, height: 44, borderRadius: '50%', flexShrink: 0 }} />
-            ))
-          )}
+          <button 
+            onClick={() => setSelectedRound(Math.max(1, selectedRound - 1))}
+            disabled={selectedRound <= 1}
+            style={{ 
+              width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--color-surface-3)', 
+              color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', opacity: selectedRound <= 1 ? 0.3 : 1
+            }}
+          >
+            <ChevronLeft size={20} />
+          </button>
+          
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontFamily: 'var(--font-display)', color: 'var(--color-accent)', lineHeight: 1 }}>
+              RODADA {selectedRound}
+            </div>
+          </div>
+
+          <button 
+            onClick={() => setSelectedRound(Math.min(38, selectedRound + 1))}
+            disabled={selectedRound >= 38}
+            style={{ 
+              width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--color-surface-3)', 
+              color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', opacity: selectedRound >= 38 ? 0.3 : 1
+            }}
+          >
+            <ChevronRight size={20} />
+          </button>
         </div>
       </div>
 

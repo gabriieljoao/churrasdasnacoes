@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, LogOut, User, Lock } from 'lucide-react'
+import { Loader2, LogOut, User, Lock, Bell, CheckCircle2 } from 'lucide-react'
 
 const passwordSchema = z.object({
   current_password: z.string().min(1, 'Obrigatório'),
@@ -25,6 +25,16 @@ export default function ProfilePage() {
   const [pwError, setPwError] = useState('')
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<PasswordFormData>({ resolver: zodResolver(passwordSchema) })
+  
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  )
+
+  const requestNotification = async () => {
+    if (typeof Notification === 'undefined') return
+    const permission = await Notification.requestPermission()
+    setNotifPermission(permission)
+  }
 
   const handleLogout = async () => {
     await logout()
@@ -81,6 +91,42 @@ export default function ProfilePage() {
             <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>Usuário</div>
             <div style={{ fontSize: 15, color: 'var(--color-text-primary)', fontFamily: 'monospace' }}>@{user?.username}</div>
           </div>
+        </div>
+      </div>
+
+      {/* Notification Settings */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <Bell size={16} style={{ color: 'var(--color-accent)' }} />
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Notificações</span>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
+            Ative as notificações para receber lembretes de palpites pendentes e deadlines de craque da rodada diretamente no seu navegador.
+          </div>
+          
+          {notifPermission === 'granted' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-success)', fontSize: 13, fontWeight: 600 }}>
+              <CheckCircle2 size={16} /> Notificações ativadas no navegador
+            </div>
+          ) : (
+            <button 
+              onClick={requestNotification}
+              disabled={notifPermission === 'denied'}
+              className="btn btn-ghost" 
+              style={{ justifyContent: 'center', fontSize: 13 }}
+            >
+              <Bell size={14} /> 
+              {notifPermission === 'denied' ? 'Notificações bloqueadas' : 'Ativar Lembretes'}
+            </button>
+          )}
+
+          {notifPermission === 'denied' && (
+            <div style={{ fontSize: 11, color: 'var(--color-error)', fontStyle: 'italic' }}>
+              As notificações estão bloqueadas nas configurações do seu navegador. Para ativar, você precisa mudar a permissão manualmente no cadeado da URL.
+            </div>
+          )}
         </div>
       </div>
 

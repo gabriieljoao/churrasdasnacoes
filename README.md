@@ -1,73 +1,46 @@
-# React + TypeScript + Vite
+# ⚽ ChurrAsco das Nações - Brasileirão 2026
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Plataforma de Draft e Chutômetro automatizada para o Brasileirão Série A 2026. O sistema integra dados reais via API em tempo real e processa pontuações automaticamente através do GitHub Actions.
 
-Currently, two official plugins are available:
+## ✨ Funcionalidades
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Chutômetro (Palpites)**: Registre placares para todos os jogos da rodada e ganhe pontos por acerto exato ou vencedor.
+- **Draft de Seleções**: Escolha 3 clubes para torcer. Você ganha pontos por vitórias, empates, goleadas e gols marcados por esses times.
+- **Craque da Rodada**: Escolha um jogador do Brasileirão para ser seu trunfo. Gols e cartões do jogador influenciam seu balanço de moedas.
+- **Ranking em Tempo Real**: Acompanhe sua posição no grupo e veja quem é o MVP da rodada anterior.
+- **Sincronismo Automático**: Resultados e eventos (gols/cartões) são sincronizados a cada 5 minutos via GitHub Actions.
 
-## React Compiler
+## 🚀 Tecnologias
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React (Vite), TypeScript, Lucide React, Supabase Auth.
+- **Backend/DB**: Supabase (PostgreSQL + Realtime).
+- **Automação**: GitHub Actions (Node.js + TSX).
+- **Dados**: API Football-Data.org.
 
-## Expanding the ESLint configuration
+## ⚙️ Configuração (Deploy)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Este projeto foi desenhado para rodar no **GitHub Pages** e usar **GitHub Actions** para o backend.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 1. Requisitos
+- Conta no [Supabase](https://supabase.com/) com as tabelas configuradas.
+- Chave de API do [Football-Data.org](https://www.football-data.org/).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 2. Secrets do GitHub
+No seu repositório do GitHub, vá em `Settings > Secrets and variables > Actions` e adicione as seguintes chaves:
+- `VITE_SUPABASE_URL`: URL do seu projeto Supabase.
+- `VITE_SUPABASE_ANON_KEY`: Chave anônima do Supabase.
+- `SUPABASE_SERVICE_ROLE_KEY`: Chave de serviço (Service Role) para scripts de automação.
+- `FOOTBALL_DATA_API_KEY`: Sua chave da API Football-Data.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 3. Scripts de Manutenção (Actions)
+Os workflows automáticos estão localizados em `.github/workflows/`:
+- `sync-brasileirao.yml`: Roda o sincronismo de resultados e cálculo de pontos.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🛠️ Desenvolvimento Local
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. Instale as dependências: `npm install`
+2. Configure as variáveis de ambiente em um arquivo `.env` (não versionado).
+3. Inicie o servidor: `npm run dev`
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
+*Projeto desenvolvido como parte da iniciativa ChurrAsco das Nações.*
