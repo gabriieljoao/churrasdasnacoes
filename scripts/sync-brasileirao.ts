@@ -15,19 +15,24 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !apiKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 const API_URL = 'https://v3.football.api-sports.io'
-const LEAGUE_ID = 71
-const SEASON = 2026
+const LEAGUE_ID = 71 // Brasileirão Série A
+const SEASON = 2024 // Mudando para 2024 para o plano gratuito
 
 async function fetchAPI(endpoint: string) {
   const url = `${API_URL}${endpoint}`
   const res = await fetch(url, { 
     headers: { 
       'x-apisports-key': apiKey!,
-      'x-rapidapi-key': apiKey!
     } 
   })
   if (!res.ok) throw new Error(`API Error: ${res.status} at ${url}`)
-  return res.json()
+  const data = await res.json()
+  console.log(`📡 API Response [${endpoint}]:`, JSON.stringify(data).substring(0, 500) + '...')
+  
+  if (data.errors && Object.keys(data.errors).length > 0) {
+    throw new Error(`API Business Error: ${JSON.stringify(data.errors)}`)
+  }
+  return data
 }
 
 async function sync() {

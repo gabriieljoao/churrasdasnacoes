@@ -15,16 +15,16 @@ if (!apiKey) { console.error('❌ Falta a variável: API_FOOTBALL_KEY'); process
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 const API_URL = 'https://v3.football.api-sports.io'
 const LEAGUE_ID = 71 // Brasileirão Série A
-const SEASON = 2026
+const SEASON = 2024 // Modo de Teste (Plano Gratuito)
 
 async function fetchAPI(endpoint: string) {
   const url = `${API_URL}${endpoint}`
-  const res = await fetch(url, { 
-    headers: { 
+  const res = await fetch(url, {
+    headers: {
       'x-apisports-key': apiKey!,
       'x-rapidapi-key': apiKey!,
       'x-rapidapi-host': 'v3.football.api-sports.io'
-    } 
+    }
   })
   if (!res.ok) throw new Error(`API Error: ${res.status} ${res.statusText} at ${url}`)
   const data = await res.json()
@@ -48,20 +48,14 @@ async function seed() {
   await supabase.from('matches').delete().neq('id', 0)
   await supabase.from('players').delete().neq('id', 0)
   await supabase.from('teams').delete().neq('id', 0)
-  
+
   // 1. TEAMS
-  console.log('⚽ Buscando Times...')
+  console.log(`⚽ Buscando Times (Temporada ${SEASON})...`)
   let teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=${SEASON}`)
   let apiTeams = teamsData.response
 
   if (!apiTeams || apiTeams.length === 0) {
-    console.warn(`⚠️ Aviso: Nenhum time em ${SEASON}. Tentando temporada anterior (2025)...`)
-    teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=2025`)
-    apiTeams = teamsData.response
-  }
-
-  if (!apiTeams || apiTeams.length === 0) {
-    console.error('❌ ERRO: Não foi possível encontrar times nem em 2026 nem em 2025.')
+    console.error(`❌ ERRO: Não foi possível encontrar times em ${SEASON}.`)
     return
   }
 
@@ -119,9 +113,9 @@ async function seed() {
     // Rate limit safety
     if (currentPage < totalPages) await new Promise(r => setTimeout(r, 100))
     currentPage++
-    
+
     // Safety break to not burn all credits accidentally if something goes wrong
-    if (currentPage > 50) break 
+    if (currentPage > 50) break
   }
 
   const { error: playersError } = await supabase.from('players').insert(playersToInsert)
