@@ -26,6 +26,8 @@ export interface Player {
   team?: Team
   position?: string
   price: number
+  last_atk_score?: number
+  last_def_score?: number
 }
 
 // ─── Draft ────────────────────────────────────────────────────────────────────

@@ -38,7 +38,10 @@ async function fetchAPI(endpoint: string) {
 async function seed() {
   console.log(`🌱 Iniciando Carga de Dados (Brasileirão ${SEASON})...`)
 
-  console.log('🚮 Removendo dados antigos para evitar poluição...')
+  console.log('🚮 Removendo dados antigos (Limpeza profunda)...')
+  await supabase.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  await supabase.from('knockout_picks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  await supabase.from('draft_picks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   await supabase.from('round_craques').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   await supabase.from('score_ledger').delete().neq('reason', 'STARTING_BALANCE')
   await supabase.from('matches').delete().neq('id', 0)
