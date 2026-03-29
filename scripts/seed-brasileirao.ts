@@ -134,8 +134,8 @@ async function seed() {
 
   const matches = apiFixtures.map((f: any) => ({
     api_id: f.fixture.id,
-    home_team_id: teamApiToDbId.get(f.homes.team?.id || f.teams.home.id),
-    away_team_id: teamApiToDbId.get(f.aways.team?.id || f.teams.away.id),
+    home_team_id: teamApiToDbId.get(f.teams.home.id),
+    away_team_id: teamApiToDbId.get(f.teams.away.id),
     group_letter: 'A',
     stage: 'GROUP_STAGE',
     round_number: parseInt(f.league.round.replace(/[^0-9]/g, '')),
