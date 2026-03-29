@@ -85,37 +85,42 @@ async function seed() {
 
   while (currentPage <= totalPages) {
     console.log(`   Página ${currentPage}...`)
-    const playersData = await fetchAPI(`/players?league=${LEAGUE_ID}&season=${SEASON}&page=${currentPage}`)
-    const apiPlayers = playersData.response
-    totalPages = playersData.paging.total
+    try {
+      const playersData = await fetchAPI(`/players?league=${LEAGUE_ID}&season=${SEASON}&page=${currentPage}`)
+      const apiPlayers = playersData.response
+      totalPages = playersData.paging.total
 
-    for (const item of apiPlayers) {
-      const dbTeamId = teamApiToDbId.get(item.statistics[0].team.id)
-      if (!dbTeamId) continue
+      for (const item of apiPlayers) {
+        const dbTeamId = teamApiToDbId.get(item.statistics[0].team.id)
+        if (!dbTeamId) continue
 
-      let position = item.statistics[0].games.position
-      let ptPosition = 'Meio-campo'
-      if (position === 'Goalkeeper') ptPosition = 'Goleiro'
-      else if (position === 'Defender') ptPosition = 'Zagueiro'
-      else if (position === 'Attacker') ptPosition = 'Atacante'
+        let position = item.statistics[0].games.position
+        let ptPosition = 'Meio-campo'
+        if (position === 'Goalkeeper') ptPosition = 'Goleiro'
+        else if (position === 'Defender') ptPosition = 'Zagueiro'
+        else if (position === 'Attacker') ptPosition = 'Atacante'
 
-      playersToInsert.push({
-        name: item.player.name,
-        team_id: dbTeamId,
-        position: ptPosition,
-        price: 10,
-        api_id: item.player.id,
-        last_atk_score: 0,
-        last_def_score: 0
-      })
+        playersToInsert.push({
+          name: item.player.name,
+          team_id: dbTeamId,
+          position: ptPosition,
+          price: 10,
+          api_id: item.player.id,
+          last_atk_score: 0,
+          last_def_score: 0
+        })
+      }
+    } catch (err: any) {
+      if (err.message.includes('Page parameter')) {
+        console.warn('⚠️ Limite de plano gratuito atingido (Máx 3 páginas). Continuando com os jogadores encontrados...')
+        break
+      }
+      throw err
     }
 
-    // Rate limit safety
     if (currentPage < totalPages) await new Promise(r => setTimeout(r, 100))
     currentPage++
-
-    // Safety break to not burn all credits accidentally if something goes wrong
-    if (currentPage > 50) break
+    if (currentPage > 50) break 
   }
 
   const { error: playersError } = await supabase.from('players').insert(playersToInsert)

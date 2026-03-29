@@ -87,6 +87,43 @@ async function sync() {
           updatePayload.events = statsData.response
           updatePayload.processed = true // Mark for calc-scores.ts to process further
         }
+
+        // 2. Discover and Update Players from this match
+        console.log(`🏃‍♂️ Buscando estatísticas da partida ${matchInDb.api_id}...`)
+        const teamStats = statsData.response // Array of { team, players: [] }
+
+        for (const teamItem of teamStats) {
+          const dbTeamId = teamItem.team.id // We use the API ID to find the DB Record
+          const { data: dbTeam } = await supabase.from('teams').select('id').eq('api_id', dbTeamId).single()
+          if (!dbTeam) continue
+
+          for (const pStats of teamItem.players) {
+            const apiPlayerId = pStats.player.id
+            
+            // Check if player exists
+            const { data: existingPlayer } = await supabase.from('players').select('id').eq('api_id', apiPlayerId).single()
+            
+            if (!existingPlayer) {
+              console.log(`✨ NOVO JOGADOR DETECTADO: ${pStats.player.name}. Cadastrando...`)
+              
+              let position = pStats.statistics[0].games.position
+              let ptPosition = 'Meio-campo'
+              if (position === 'Goalkeeper') ptPosition = 'Goleiro'
+              else if (position === 'Defender') ptPosition = 'Zagueiro'
+              else if (position === 'Attacker') ptPosition = 'Atacante'
+
+              await supabase.from('players').insert({
+                name: pStats.player.name,
+                team_id: dbTeam.id,
+                position: ptPosition,
+                price: 10,
+                api_id: apiPlayerId,
+                last_atk_score: 0,
+                last_def_score: 0
+              })
+            }
+          }
+        }
       }
 
       const { error } = await supabase
