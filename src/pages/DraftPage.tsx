@@ -612,6 +612,29 @@ export default function DraftPage() {
         </>
       )}
 
+      {/* Diagnostic Debug Banner (Temporary) */}
+      <div style={{ 
+        position: 'fixed', 
+        bottom: 0, 
+        left: 0, 
+        right: 0, 
+        background: '#000', 
+        color: '#0f0', 
+        fontSize: 10, 
+        padding: '4px 10px', 
+        fontFamily: 'monospace', 
+        zIndex: 9999,
+        borderTop: '1px solid #333',
+        display: 'flex',
+        gap: 15
+      }}>
+        <span>DEBUG:</span>
+        <span>Teams: {teams.length}</span>
+        <span>Players: {players.length}</span>
+        <span>Tab: {tab}</span>
+        <span>Auth: {user ? 'LOGGED' : 'OUT'}</span>
+      </div>
+
       {/* Toast */}
       {toast && (
         <div className="toast-container">
