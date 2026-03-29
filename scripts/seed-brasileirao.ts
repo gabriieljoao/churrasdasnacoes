@@ -22,7 +22,8 @@ async function fetchAPI(endpoint: string) {
   const res = await fetch(url, { 
     headers: { 
       'x-apisports-key': apiKey!,
-      'x-rapidapi-key': apiKey! // Supporting both just in case
+      'x-rapidapi-key': apiKey!,
+      'x-rapidapi-host': 'v3.football.api-sports.io'
     } 
   })
   if (!res.ok) throw new Error(`API Error: ${res.status} ${res.statusText} at ${url}`)
@@ -50,11 +51,17 @@ async function seed() {
   
   // 1. TEAMS
   console.log('⚽ Buscando Times...')
-  const teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=${SEASON}`)
-  const apiTeams = teamsData.response
+  let teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=${SEASON}`)
+  let apiTeams = teamsData.response
 
   if (!apiTeams || apiTeams.length === 0) {
-    console.error('⚠️ NENHUM TIME ENCONTRADO para League ID 71 e Season 2026. Verifique se o plano da API cobre este ano ou se os parâmetros estão corretos.')
+    console.warn(`⚠️ Aviso: Nenhum time em ${SEASON}. Tentando temporada anterior (2025)...`)
+    teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=2025`)
+    apiTeams = teamsData.response
+  }
+
+  if (!apiTeams || apiTeams.length === 0) {
+    console.error('❌ ERRO: Não foi possível encontrar times nem em 2026 nem em 2025.')
     return
   }
 
