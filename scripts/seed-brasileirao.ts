@@ -8,10 +8,9 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const apiKey = process.env.API_FOOTBALL_KEY
 
-if (!supabaseUrl || !supabaseServiceRoleKey || !apiKey) {
-  console.error('❌ Missing VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or API_FOOTBALL_KEY in .env')
-  process.exit(1)
-}
+if (!supabaseUrl) { console.error('❌ Falta a variável: VITE_SUPABASE_URL (veja se o segredo SUPABASE_URL existe no GitHub)'); process.exit(1); }
+if (!supabaseServiceRoleKey) { console.error('❌ Falta a variável: SUPABASE_SERVICE_ROLE_KEY'); process.exit(1); }
+if (!apiKey) { console.error('❌ Falta a variável: API_FOOTBALL_KEY'); process.exit(1); }
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 const API_URL = 'https://v3.football.api-sports.io'
