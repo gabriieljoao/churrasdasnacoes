@@ -1,0 +1,25 @@
+name: API Connectivity Scanner
+
+on:
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  scan:
+    name: Run API Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Scanner
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: npx tsx scripts/api-scanner.ts
