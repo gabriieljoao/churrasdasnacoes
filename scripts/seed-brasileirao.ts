@@ -28,6 +28,8 @@ async function fetchAPI(endpoint: string) {
   })
   if (!res.ok) throw new Error(`API Error: ${res.status} ${res.statusText} at ${url}`)
   const data = await res.json()
+  console.log(`📡 API Response [${endpoint}]:`, JSON.stringify(data).substring(0, 500) + '...')
+  
   if (data.errors && Object.keys(data.errors).length > 0) {
     throw new Error(`API Business Error: ${JSON.stringify(data.errors)}`)
   }
@@ -48,6 +50,11 @@ async function seed() {
   console.log('⚽ Buscando Times...')
   const teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=${SEASON}`)
   const apiTeams = teamsData.response
+
+  if (!apiTeams || apiTeams.length === 0) {
+    console.error('⚠️ NENHUM TIME ENCONTRADO para League ID 71 e Season 2026. Verifique se o plano da API cobre este ano ou se os parâmetros estão corretos.')
+    return
+  }
 
   const cleanTeams = apiTeams.map((item: any) => ({
     name: item.team.name,
