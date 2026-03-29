@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { canPickCraque, flagUrl, getCraqueDeadline } from '@/lib/utils'
 import { DRAFT_MAX_TEAMS, DRAFT_MAX_SHARED } from '@/lib/scoring'
 import type { Team, Player, DraftPick, Match } from '@/types'
-import { Shield, Users, Lock, Clock, CheckCircle2, Zap, Save, Coins } from 'lucide-react'
+import { Shield, Users, Lock, Clock, CheckCircle2, Zap, Save, Coins, Sword } from 'lucide-react'
 import { format } from 'date-fns'
 
 // ─── Draft — Team Section ──────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ function CraqueCard({ player, isSelected, onSelect, disabled, canAfford }: {
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        padding: '10px 14px',
+        padding: '12px 14px',
         background: isSelected ? 'rgba(245,158,11,0.1)' : 'var(--color-surface-2)',
         border: `1.5px solid ${isSelected ? 'rgba(245,158,11,0.4)' : 'var(--color-border)'}`,
         borderRadius: 'var(--radius-md)',
@@ -101,7 +101,17 @@ function CraqueCard({ player, isSelected, onSelect, disabled, canAfford }: {
         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-primary)' }}>
           {player.name}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{player.team?.name} · {player.position}</div>
+        <div style={{ fontSize: 11, color: '#f2f2f2', opacity: 0.8 }}>{player.team?.name} · {player.position}</div>
+        
+        {/* Performance Analysis */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#f2f2f2', fontSize: 10, fontWeight: 600 }}>
+            <Sword size={10} style={{ color: '#ef4444' }} /> {player.last_atk_score || 0}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#f2f2f2', fontSize: 10, fontWeight: 600 }}>
+            <Shield size={10} style={{ color: '#3b82f6' }} /> {player.last_def_score || 0}
+          </div>
+        </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-gold)', display: 'flex', alignItems: 'center', gap: 4 }}>

@@ -6,7 +6,7 @@ dotenv.config({ path: join(process.cwd(), '.env') })
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const apiKey = process.env.FOOTBALL_DATA_API_KEY
+const apiKey = process.env.API_FOOTBALL_KEY
 
 if (!supabaseUrl || !supabaseServiceRoleKey || !apiKey) {
   console.error('❌ Missing variables in .env')
@@ -14,88 +14,87 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !apiKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
+const API_URL = 'https://v3.football.api-sports.io'
+const LEAGUE_ID = 71
+const SEASON = 2026
 
 async function fetchAPI(endpoint: string) {
-  const url = `https://api.football-data.org/v4${endpoint}`
-  const res = await fetch(url, { headers: { 'X-Auth-Token': apiKey! } })
+  const url = `${API_URL}${endpoint}`
+  const res = await fetch(url, { 
+    headers: { 
+      'x-apisports-key': apiKey!,
+      'x-rapidapi-key': apiKey!
+    } 
+  })
   if (!res.ok) throw new Error(`API Error: ${res.status} at ${url}`)
   return res.json()
 }
 
 async function sync() {
-  console.log('🔄 Sincronizando partidas do Brasileirão Série A...')
+  console.log(`🔄 Sincronizando Brasileirão ${SEASON} (API-Football)...`)
 
-  // 1. Get matches that are NOT finished in our DB to compare
+  // 1. Get matches that are NOT processed in our DB
   const { data: ourMatches } = await supabase
     .from('matches')
-    .select('id, home_team_id, away_team_id, home_score_ft, away_score_ft, status')
-    .neq('status', 'FINISHED')
+    .select('id, api_id, status, processed, home_score_ft, away_score_ft')
+    .eq('processed', false)
     
   if (!ourMatches || ourMatches.length === 0) {
-    console.log('✅ Nenhuma partida em aberto no banco para sincronizar.')
+    console.log('✅ Tudo sincronizado. Nenhuma partida pendente.')
     return
   }
 
-  // 2. Map teams to IDs for comparison
-  const { data: teams } = await supabase.from('teams').select('id, name')
-  const nameToDbId = new Map(teams?.map(t => [t.name, t.id]))
-
-  // 3. Fetch current status of ALL matches (or just target the season)
-  // We use the broad /matches endpoint to get live + finished in one go
-  const matchesData = await fetchAPI('/competitions/BSA/matches?season=2026')
-  const apiMatches = matchesData.matches.filter((m: any) => 
-    m.status === 'FINISHED' || m.status === 'IN_PLAY' || m.status === 'PAUSED' || m.status === 'LIVE'
-  )
+  // 2. Fetch current status of ALL fixtures for the season
+  const fixturesData = await fetchAPI(`/fixtures?league=${LEAGUE_ID}&season=${SEASON}`)
+  const apiFixtures = fixturesData.response
 
   let updatedCount = 0
 
-  for (const apiMatch of apiMatches) {
-    const homeName = apiMatch.homeTeam.shortName || apiMatch.homeTeam.name
-    const awayName = apiMatch.awayTeam.shortName || apiMatch.awayTeam.name
+  for (const matchInDb of ourMatches) {
+    const apiMatch = apiFixtures.find((f: any) => f.fixture.id === matchInDb.api_id)
+    if (!apiMatch) continue
+
+    const apiStatus = (apiMatch.fixture.status.short === 'FT') ? 'FINISHED' : 
+                     (apiMatch.fixture.status.short === 'NS' ? 'SCHEDULED' : 'LIVE')
     
-    const dbHomeId = nameToDbId.get(homeName)
-    const dbAwayId = nameToDbId.get(awayName)
+    const apiHome = apiMatch.goals.home
+    const apiAway = apiMatch.goals.away
 
-    if (!dbHomeId || !dbAwayId) continue
+    const hasChanged = 
+      matchInDb.home_score_ft !== apiHome || 
+      matchInDb.away_score_ft !== apiAway || 
+      matchInDb.status !== apiStatus
 
-    // Find if we have this specific match record active
-    const matchInDb = ourMatches.find(m => m.home_team_id === dbHomeId && m.away_team_id === dbAwayId)
-
-    if (matchInDb) {
-      const apiHome = apiMatch.score.fullTime.home
-      const apiAway = apiMatch.score.fullTime.away
-      // API status mapping
-      const apiStatus = (apiMatch.status === 'FINISHED') ? 'FINISHED' : 'LIVE'
+    if (hasChanged) {
+      console.log(`[ATUALIZANDO] Jogo ${matchInDb.api_id}: ${apiHome}x${apiAway} (${apiStatus})`)
       
-      // COMPARISON: Only write to Supabase if data actually changed
-      const hasChanged = 
-        matchInDb.home_score_ft !== apiHome || 
-        matchInDb.away_score_ft !== apiAway || 
-        matchInDb.status !== apiStatus
-
-      if (hasChanged) {
-        console.log(`[ATUALIZANDO] ${homeName} ${matchInDb.home_score_ft ?? 0}x${matchInDb.away_score_ft ?? 0} -> ${apiHome}x${apiAway} (${apiStatus})`)
-        
-        const { error } = await supabase
-          .from('matches')
-          .update({
-            home_score_ft: apiHome,
-            away_score_ft: apiAway,
-            status: apiStatus
-          })
-          .eq('id', matchInDb.id)
-
-        if (error) console.error(`❌ Erro em ${homeName} vs ${awayName}:`, error)
-        else updatedCount++
+      let updatePayload: any = {
+        home_score_ft: apiHome,
+        away_score_ft: apiAway,
+        status: apiStatus
       }
+
+      // 3. DEEP SYNC: If finished, get player stats
+      if (apiStatus === 'FINISHED') {
+        console.log(`   🔎 Buscando telemetria individual para o jogo ${matchInDb.api_id}...`)
+        const statsData = await fetchAPI(`/fixtures/players?fixture=${matchInDb.api_id}`)
+        if (statsData.response && statsData.response.length > 0) {
+          updatePayload.events = statsData.response
+          updatePayload.processed = true // Mark for calc-scores.ts to process further
+        }
+      }
+
+      const { error } = await supabase
+        .from('matches')
+        .update(updatePayload)
+        .eq('id', matchInDb.id)
+
+      if (error) console.error(`❌ Erro no jogo ${matchInDb.api_id}:`, error)
+      else updatedCount++
     }
   }
 
   console.log(`🏁 Sincronização concluída. ${updatedCount} mudanças detectadas.`)
-  if (updatedCount > 0) {
-    console.log('👉 Rodando cálculo de pontuação automático...')
-    // Note: In GitHub Actions, we run calc-scores.ts in the next step anyway.
-  }
 }
 
 sync().catch(console.error)

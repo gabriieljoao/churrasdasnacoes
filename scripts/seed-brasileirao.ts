@@ -6,58 +6,55 @@ dotenv.config({ path: join(process.cwd(), '.env') })
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const apiKey = process.env.FOOTBALL_DATA_API_KEY
+const apiKey = process.env.API_FOOTBALL_KEY
 
 if (!supabaseUrl || !supabaseServiceRoleKey || !apiKey) {
-  console.error('❌ Missing VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or FOOTBALL_DATA_API_KEY in .env')
+  console.error('❌ Missing VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or API_FOOTBALL_KEY in .env')
   process.exit(1)
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
+const API_URL = 'https://v3.football.api-sports.io'
+const LEAGUE_ID = 71 // Brasileirão Série A
+const SEASON = 2026
 
 async function fetchAPI(endpoint: string) {
-  const url = `https://api.football-data.org/v4${endpoint}`
-  const res = await fetch(url, { headers: { 'X-Auth-Token': apiKey! } })
+  const url = `${API_URL}${endpoint}`
+  const res = await fetch(url, { 
+    headers: { 
+      'x-apisports-key': apiKey!,
+      'x-rapidapi-key': apiKey! // Supporting both just in case
+    } 
+  })
   if (!res.ok) throw new Error(`API Error: ${res.status} ${res.statusText} at ${url}`)
-  return res.json()
+  const data = await res.json()
+  if (data.errors && Object.keys(data.errors).length > 0) {
+    throw new Error(`API Business Error: ${JSON.stringify(data.errors)}`)
+  }
+  return data
 }
 
 async function seed() {
-  console.log('🌱 Buscando times do Brasileirão Série A na API...')
-  
-  const competition = await fetchAPI('/competitions/BSA/teams?season=2026')
-  const apiTeams = competition.teams
+  console.log(`🌱 Iniciando Carga de Dados (Brasileirão ${SEASON})...`)
 
-  console.log('🚮 Removendo dados antigos...')
+  console.log('🚮 Removendo dados antigos para evitar poluição...')
   await supabase.from('round_craques').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-  await supabase.from('score_ledger').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-  // We don't delete STARTING_BALANCE directly because the DB might not have a clean way without deleting all.
-  // Actually, we'll delete all and re-add STARTING_BALANCE for everyone so they have 10 again.
+  await supabase.from('score_ledger').delete().neq('reason', 'STARTING_BALANCE')
   await supabase.from('matches').delete().neq('id', 0)
   await supabase.from('players').delete().neq('id', 0)
   await supabase.from('teams').delete().neq('id', 0)
   
-  const { data: profiles } = await supabase.from('profiles').select('id')
-  if (profiles && profiles.length > 0) {
-    const ledgers = profiles.map(p => ({
-      user_id: p.id,
-      reason: 'STARTING_BALANCE',
-      points: 10
-    }))
-    await supabase.from('score_ledger').insert(ledgers)
-    console.log(`✅ Restaurado 10 moedas de saldo para ${profiles.length} usuários`)
-  }
+  // 1. TEAMS
+  console.log('⚽ Buscando Times...')
+  const teamsData = await fetchAPI(`/teams?league=${LEAGUE_ID}&season=${SEASON}`)
+  const apiTeams = teamsData.response
 
-  // App Config
-  await supabase.from('app_config').upsert({ id: true, phase: 'PRE_COPA', draft_open: true })
-
-  // Teams
-  console.log('⚽ Inserindo Times...')
-  const cleanTeams = apiTeams.map((t: any) => ({
-    name: t.shortName || t.name,
-    country_code: t.tla || 'BR',
-    group_letter: 'A', // Forcing 'A' so the app UI grouping doesn't crash
-    flag_url: t.crest
+  const cleanTeams = apiTeams.map((item: any) => ({
+    name: item.team.name,
+    country_code: 'BR',
+    group_letter: 'A',
+    flag_url: item.team.logo,
+    api_id: item.team.id
   }))
 
   const { data: insertedTeams, error: teamsError } = await supabase
@@ -68,64 +65,78 @@ async function seed() {
   if (teamsError) throw teamsError
   console.log(`✅ ${insertedTeams.length} times inseridos`)
 
-  console.log('🏃‍♂️ Inserindo Jogadores Oficiais (SQUADS)...')
-  const PLAYERS: any[] = []
-  
-  // API uses its own IDs for homeTeam/awayTeam. We need to map Name -> Supabase ID.
-  const nameToDbId = new Map(insertedTeams.map((t: any) => [t.name, t.id]))
+  const teamApiToDbId = new Map(insertedTeams.map((t: any) => [t.api_id, t.id]))
 
-  for (const apiTeam of apiTeams) {
-    const dbTeamId = nameToDbId.get(apiTeam.shortName || apiTeam.name)
-    if (!dbTeamId || !apiTeam.squad) continue
+  // 2. PLAYERS (Paginated - League wide)
+  console.log('🏃‍♂️ Buscando Jogadores (Paginado)...')
+  let playersToInsert: any[] = []
+  let currentPage = 1
+  let totalPages = 1
 
-    for (const player of apiTeam.squad) {
-      if (player.position === 'Goalkeeper') continue // We don't use Goleiros unless needed, but let's include all to be safe just in case! Actually let's just add all.
-      
+  while (currentPage <= totalPages) {
+    console.log(`   Página ${currentPage}...`)
+    const playersData = await fetchAPI(`/players?league=${LEAGUE_ID}&season=${SEASON}&page=${currentPage}`)
+    const apiPlayers = playersData.response
+    totalPages = playersData.paging.total
+
+    for (const item of apiPlayers) {
+      const dbTeamId = teamApiToDbId.get(item.statistics[0].team.id)
+      if (!dbTeamId) continue
+
+      let position = item.statistics[0].games.position
       let ptPosition = 'Meio-campo'
-      if (player.position === 'Offence') ptPosition = 'Atacante'
-      else if (player.position === 'Defence') ptPosition = 'Zagueiro'
-      else if (player.position === 'Goalkeeper') ptPosition = 'Goleiro'
+      if (position === 'Goalkeeper') ptPosition = 'Goleiro'
+      else if (position === 'Defender') ptPosition = 'Zagueiro'
+      else if (position === 'Attacker') ptPosition = 'Atacante'
 
-      PLAYERS.push({ 
-        name: player.name, 
-        team_id: dbTeamId, 
-        position: ptPosition, 
-        price: 10 // Starting generic economy price
+      playersToInsert.push({
+        name: item.player.name,
+        team_id: dbTeamId,
+        position: ptPosition,
+        price: 10,
+        api_id: item.player.id,
+        last_atk_score: 0,
+        last_def_score: 0
       })
     }
+
+    // Rate limit safety
+    if (currentPage < totalPages) await new Promise(r => setTimeout(r, 100))
+    currentPage++
+    
+    // Safety break to not burn all credits accidentally if something goes wrong
+    if (currentPage > 50) break 
   }
 
-  await supabase.from('players').insert(PLAYERS)
-  console.log(`✅ ${PLAYERS.length} jogadores inseridos!`)
-  
-  console.log('📅 Buscando TODAS as Partidas da Temporada 2026...')
-  const matchesData = await fetchAPI('/competitions/BSA/matches?season=2026')
-  const apiMatches = matchesData.matches
+  const { error: playersError } = await supabase.from('players').insert(playersToInsert)
+  if (playersError) throw playersError
+  console.log(`✅ ${playersToInsert.length} jogadores inseridos!`)
 
-  const matches = apiMatches.map((m: any) => {
-    const homeName = m.homeTeam.shortName || m.homeTeam.name
-    const awayName = m.awayTeam.shortName || m.awayTeam.name
-    
-    return {
-      home_team_id: nameToDbId.get(homeName),
-      away_team_id: nameToDbId.get(awayName),
-      group_letter: 'A',
-      stage: 'GROUP_STAGE',
-      round_number: m.matchday,
-      match_day: 1, // Visual ordering
-      starts_at: m.utcDate,
-      status: m.status === 'FINISHED' ? 'FINISHED' : 'SCHEDULED',
-      home_score_ft: m.score?.fullTime?.home ?? null,
-      away_score_ft: m.score?.fullTime?.away ?? null,
-      processed: false
-    }
-  }).filter((m: any) => m.home_team_id && m.away_team_id)
+  // 3. FIXTURES (Matches)
+  console.log('📅 Buscando Tabela de Jogos...')
+  const fixturesData = await fetchAPI(`/fixtures?league=${LEAGUE_ID}&season=${SEASON}`)
+  const apiFixtures = fixturesData.response
+
+  const matches = apiFixtures.map((f: any) => ({
+    api_id: f.fixture.id,
+    home_team_id: teamApiToDbId.get(f.homes.team?.id || f.teams.home.id),
+    away_team_id: teamApiToDbId.get(f.aways.team?.id || f.teams.away.id),
+    group_letter: 'A',
+    stage: 'GROUP_STAGE',
+    round_number: parseInt(f.league.round.replace(/[^0-9]/g, '')),
+    match_day: 1,
+    starts_at: f.fixture.date,
+    status: f.fixture.status.short === 'FT' ? 'FINISHED' : (f.fixture.status.short === 'NS' ? 'SCHEDULED' : 'LIVE'),
+    home_score_ft: f.goals.home,
+    away_score_ft: f.goals.away,
+    processed: false
+  })).filter((m: any) => m.home_team_id && m.away_team_id)
 
   const { error: matchesError } = await supabase.from('matches').insert(matches)
   if (matchesError) throw matchesError
 
   console.log(`✅ ${matches.length} partidas inseridas`)
-  console.log('🎉 Tudo pronto! Execute o app ou o sync script.')
+  console.log('🎉 Migração Completa para Brasileirão 2026 (API-Football)!')
 }
 
 seed().catch(console.error)
